@@ -32,7 +32,8 @@
 	//shortcuts
 	var I = parseInt;
 	var M = Math;
-	var ie =$.browser.msie;
+	//var ie =$.browser.msie;
+	var ie =!$.support.leadingWhitespace; // no need for jquery migrate now
 	var S;
 	try{S = sessionStorage;}catch(e){}	//Firefox crashes when executed as local file system
 	
@@ -82,7 +83,8 @@
 	 */
 	var createGrips = function(t){	
 	
-		var th = t.find(">thead>tr>th,>thead>tr>td");	//if table headers are specified in its semantically correct tag, are obtained
+		//var th = t.find(">thead>tr>th,>thead>tr>td");	//if table headers are specified in its semantically correct tag, are obtained
+		var th = t.find(">thead>tr>th,>thead>tr>td").not(options.ignoreClass);
 		if(!th.length) th = t.find(">tbody>tr:first>th,>tr:first>th,>tbody>tr:first>td, >tr:first>td");	 //but headers can also be included in different ways
 		t.cg = t.find("col"); 						//a table can also contain a colgroup with col elements		
 		t.ln = th.length;							//table length is stored	
@@ -284,6 +286,9 @@
 				marginLeft: null,				//in case the table contains any margins, colResizable needs to know the values used, e.g. "10%", "15em", "5px" ...
 				marginRight: null, 				//in case the table contains any margins, colResizable needs to know the values used, e.g. "10%", "15em", "5px" ...
 				disable: false,					//disables all the enhancements performed in a previously colResized table	
+				
+				// extend plugin
+				ignoreClass: '',  // don't resize columns with supplied classname
 				
 				//events:
 				onDrag: null, 					//callback function to be fired during the column resizing process if liveDrag is enabled
