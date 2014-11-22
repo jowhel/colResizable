@@ -40,6 +40,7 @@
 	//append required CSS rules  
 	h.append("<style type='text/css'>  .JColResizer{table-layout:fixed;} .JColResizer td, .JColResizer th{overflow:hidden;padding-left:0!important; padding-right:0!important;}  .JCLRgrips{ height:0px; position:relative;} .JCLRgrip{margin-left:-5px; position:absolute; z-index:5; } .JCLRgrip .JColResizer{position:absolute;background-color:red;filter:alpha(opacity=1);opacity:0;width:10px;height:100%;top:0px} .JCLRLastGrip{position:absolute; width:1px; } .JCLRgripDrag{ border-left:1px dotted black;	}</style>");
 
+	var opts;
 	
 	/**
 	 * Function to allow column resizing for table objects. It is the starting point to apply the plugin.
@@ -47,6 +48,7 @@
 	 * @param {Object} options	- some customization values
 	 */
 	var init = function( tb, options){	
+		opts = options; // save options
 		var t = $(tb);										//the table object is wrapped
 		if(options.disable) return destroy(t);				//the user is asking to destroy a previously colResized table
 		var	id = t.id = t.attr(ID) || SIGNATURE+count++;	//its id is obtained, if null new one is generated		
@@ -84,7 +86,7 @@
 	var createGrips = function(t){	
 	
 		//var th = t.find(">thead>tr>th,>thead>tr>td");	//if table headers are specified in its semantically correct tag, are obtained
-		var th = t.find(">thead>tr>th,>thead>tr>td").not(options.ignoreClass);
+		var th = t.find(">thead>tr>th,>thead>tr>td").not(opts.ignoreClass);
 		if(!th.length) th = t.find(">tbody>tr:first>th,>tr:first>th,>tbody>tr:first>td, >tr:first>td");	 //but headers can also be included in different ways
 		t.cg = t.find("col"); 						//a table can also contain a colgroup with col elements		
 		t.ln = th.length;							//table length is stored	
