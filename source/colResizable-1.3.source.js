@@ -111,7 +111,10 @@
 		var zz = _(t.g).filter(function(grip) {
 			return !grip.hasClass(t.opt.ignoreClass);
 		});
-		zz[zz.length-1].addClass(t.opt.ignoreClass);
+		
+		if(zz.length) {
+			zz[zz.length-1].addClass(t.opt.ignoreClass);
+		}
 	};
 	
 
