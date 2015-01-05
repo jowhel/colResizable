@@ -13,7 +13,7 @@
 	
 	If you are going to use this plugin in production environments it is 
 	strongly recomended to use its minified version: colResizable.min.js
-
+	
 */
 
 (function($){ 	
@@ -21,7 +21,7 @@
 	var d = $(document); 		//window object
 	var h = $("head");			//head object
 	var drag = null;			//reference to the current grip that is being dragged
-	var tables = [];			//array of the already processed tables (table.id as key)
+	var tables = {} // not an array [];			//array of the already processed tables (table.id as key)
 	var	count = 0;				//internal count to create unique IDs when needed.	
 	
 	//common strings for minification	(in the minified version there are plenty more)
@@ -45,7 +45,7 @@
 	 * @param {DOM node} tb - refrence to the DOM table object to be enhanced
 	 * @param {Object} options	- some customization values
 	 */
-	var init = function( tb, options){	
+	var init = function( tb, options) {
 		var t = $(tb);										//the table object is wrapped
 		if(options.disable) return destroy(t);				//the user is asking to destroy a previously colResized table
 		var	id = t.id = t.attr(ID) || SIGNATURE+count++;	//its id is obtained, if null new one is generated		
@@ -85,18 +85,18 @@
 		var th = t.find(">thead>tr>th,>thead>tr>td");	//if table headers are specified in its semantically correct tag, are obtained
 		if(!th.length) th = t.find(">tbody>tr:first>th,>tr:first>th,>tbody>tr:first>td, >tr:first>td");	 //but headers can also be included in different ways
 		t.cg = t.find("col"); 						//a table can also contain a colgroup with col elements		
-		t.ln = th.length;							//table length is stored	
-		if(t.p && S && S[t.id])memento(t,th);		//if 'postbackSafe' is enabled and there is data for the current table, its coloumn layout is restored
+		t.ln = th.length;							//table length is stored
+		if(t.p && S && S[t.opt.sessionPrefix + t.id])memento(t,th);		//if 'postbackSafe' is enabled and there is data for the current table, its coloumn layout is restored
 		th.each(function(i){						//iterate through the table column headers			
 			var c = $(this); 						//jquery wrap for the current column			
 			var g = $(t.gc.append('<div class="JCLRgrip"></div>')[0].lastChild); //add the visual node to be used as grip
-			if(c.hasClass(t.opt.ignoreClass)) { g.addClass(t.opt.ignoreClass); } /////
 			g.t = t; g.i = i; g.c = c;	c.w =c.width();		//some values are stored in the grip's node data
 			t.g.push(g); t.c.push(c);						//the current grip and column are added to its table object
 			c.width(c.w).removeAttr("width");				//the width of the column is converted into pixel-based measurements
+			if(c.hasClass(t.opt.ignoreClass)) { g.addClass(t.opt.ignoreClass); } /////
 			if (i < t.ln-1)	g.mousedown(onGripMouseDown).append(t.opt.gripInnerHtml).append('<div class="'+SIGNATURE+'" style="cursor:'+t.opt.hoverCursor+'"></div>'); //bind the mousedown event to start dragging 
 			else g.addClass("JCLRLastGrip").removeClass("JCLRgrip");	//the last grip is used only to store data			
-			g.data(SIGNATURE, {i:i, t:t.attr(ID)});						//grip index and its table name are stored in the HTML 												
+			g.data(SIGNATURE, {i:i, t:t.attr(ID)});						//grip index and its table name are stored in the HTML 
 		}); 	
 		t.cg.removeAttr("width");	//remove the width attribute from elements in the colgroup (in any)
 		syncGrips(t); 				//the grips are positioned according to the current table layout			
@@ -104,10 +104,9 @@
 		//width value set by this plugin. Those values are removed
 		t.find('td, th').not(th).not('table th, table td').each(function(){  
 			$(this).removeAttr('width');	//the width attribute is removed from all table cells which are not nested in other tables and dont belong to the header
-		});		
-
-		///// dont want the last resizable column in the table to actually be resizable since it will stretch
-		///// the column to its immediate right
+		});
+		
+		///// dont want the last resizable column in the table to actually be resizable since it will stretch the column to its immediate right
 		var zz = _(t.g).filter(function(grip) {
 			return !grip.hasClass(t.opt.ignoreClass);
 		});
@@ -125,25 +124,85 @@
 	 * @param {jQuery ref} th - reference to the first row elements (only set in deserialization)
 	 */
 	var memento = function(t, th){ 
-		var w,m=0,i=0,aux =[];
+		var w, m=0, i=0, aux =[], tot, vis=0;
 		if(th){										//in deserialization mode (after a postback)
 			t.cg.removeAttr("width");
-			if(t.opt.flush){ S[t.id] =""; return;} 	//if flush is activated, stored data is removed
-			w = S[t.id].split(";");					//column widths is obtained
-			for(;i<t.ln;i++){						//for each column
-				aux.push(100*w[i]/w[t.ln]+"%"); 	//width is stored in an array since it will be required again a couple of lines ahead
-				th.eq(i).css("width", aux[i] ); 	//each column width in % is resotred
+			if(t.opt.flush){ S[t.opt.sessionPrefix + t.id] =""; return;} 	//if flush is activated, stored data is removed
+			w = S[t.opt.sessionPrefix + t.id].split(";");					//column widths is obtained
+			
+			tot = w[w.length-1];
+
+			///// we're hiding columns sometimes and not rendering columns other times,
+			   // meaning the columns are present but not visible for the former
+			   // but for the latter the columns do not exist in the dom
+			   // so try to adjust the bounds of the 'w' array
+			while(th.length-1 > w.length-2) {
+				// insert a standard width second to last position of array 'w'
+				w.splice(-2,0,'75');
+				if(w.length > 50) break;
+			}
+
+			// other case where there are more cols in local storage than exists in dom
+			if(th.length < w.length) {
+				tot = 0;
+
+				for(i=0;i<th.length;i++) {
+					if(th.eq(i).is(':visible')) {
+						// if this is the second to last visible column just add the last two items
+						if(i === th.length-2) {
+							tot += parseInt(w[w.length-3]);
+							tot += parseInt(w[w.length-2]);
+							break;
+						} else {
+							tot += parseInt(w[i]);
+						}
+					}
+				}
+			}
+
+			for(i=0;i<t.ln;i++){						//for each column
+				// set the last hidden column to always be fixed width
+				var fxdw,flag=0;
+				vis++;
+				
+				if(i === w.length-2) {
+					fxdw = (17/tot*100).toFixed(3);
+					aux.push(fxdw+"%");
+				} else if(vis === th.filter(':visible').length-1) {
+					fxdw = (100*w[w.length-3]/tot).toFixed(1);
+					aux.push(fxdw+"%");
+					th.filter(':visible').eq(i).css("width", aux[i] );
+					fxdw = (17/tot*100).toFixed(1);
+					aux.push(fxdw+"%");
+					th.filter(':visible').eq(i+1).css("width", aux[i+1] );
+					break;
+				} else {
+					aux.push((100*w[i]/tot).toFixed(1)+"%"); /////
+				}
+
+				th.eq(i).css("width", parseInt(aux[i]) > 2 ? aux[i] : '3%' ); 	//each column width in % is restored
 			}			
-			for(i=0;i<t.ln;i++)
-				t.cg.eq(i).css("width", aux[i]);	//this code is required in order to create an inline CSS rule with higher precedence than an existing CSS class in the "col" elements
+			for(i=0;i<t.ln;i++) {
+				if( th.eq(i).is(':visible') ) { /////
+					// last visible column
+					if(i === th.filter(':visible').length-1) {
+						t.cg.eq(i).css("width", 'auto');
+						break;
+					}
+					
+					// t.cg.eq(i).css("width", aux[i]);	//this code is required in order to create an inline CSS rule with higher precedence than an existing CSS class in the "col" elements
+					t.cg.eq(i).css("width", ((parseInt(aux[i])) > 2 ? aux[i] : '3%')); /////
+				}
+			}
 		}else{							//in serialization mode (after resizing a column)
-			S[t.id] ="";				//clean up previous data
+			S[t.opt.sessionPrefix + t.id] ="";				//clean up previous data
+		
 			for(i in t.c){				//iterate through columns
 				w = t.c[i].width();		//width is obtained
-				S[t.id] += w+";";		//width is appended to the sessionStorage object using ID as key
+				S[t.opt.sessionPrefix + t.id] += w+";";		//width is appended to the sessionStorage object using ID as key
 				m+=w;					//carriage is updated to obtain the full size used by columns
 			}
-			S[t.id]+=m;					//the last item of the serialized string is the table's active area (width), 
+			S[t.opt.sessionPrefix + t.id]+=m;					//the last item of the serialized string is the table's active area (width), 
 										//to be able to obtain % width value of each columns while deserializing
 		}	
 	};
@@ -153,14 +212,17 @@
 	 * Function that places each grip in the correct position according to the current table layout	 * 
 	 * @param {jQuery ref} t - table object
 	 */
-	var syncGrips = function (t){	
+	var syncGrips = function (t){
 		t.gc.width(t.w);			//the grip's container width is updated				
 		for(var i=0; i<t.ln; i++){	//for each column
-			var c = t.c[i]; 			
+			var c = t.c[i]; 		
+			
+			if(t.g[i] !== undefined) {
 			t.g[i].css({			//height and position of the grip is updated according to the table layout
 				left: c.offset().left - t.offset().left + c.outerWidth() + t.cs / 2 + PX,
 				height: t.opt.headerOnly? t.c[0].outerHeight() : t.outerHeight()				
-			});			
+			});	
+			}
 		} 	
 	};
 	
@@ -175,10 +237,17 @@
 	* @param {bool} isOver - to identify when the function is being called from the onGripDragOver event	
 	*/
 	var syncCols = function(t,i,isOver){
-		var inc = drag.x-drag.l, c = t.c[i], c2 = t.c[i+1]; 			
-		var w = c.w + inc;	var w2= c2.w- inc;	//their new width is obtained					
+		var inc = drag.x-drag.l, c = t.c[i], c2, j=i; ///// c2 = t.c[i+1]; 	
+		while(!t.c[++j].is(':visible')) { ///// look for next visible column
+			if(j>=t.c.length) break;
+		}
+		c2 = t.c[j];
+		
+		var w = c.w + inc;	var w2= c2.w- inc;	//their new width is obtained		
 		c.width( w + PX);	c2.width(w2 + PX);	//and set	
-		t.cg.eq(i).width( w + PX); t.cg.eq(i+1).width( w2 + PX);
+
+		// t.cg.eq(i).width( w + PX); t.cg.eq(i+1).width( w2 + PX);
+		t.cg.eq(i).width( w + PX); t.cg.eq(j).width( w2 + PX); /////
 		if(isOver){c.w=w; c2.w=w2;}
 	};
 
@@ -196,11 +265,21 @@
 
 		var max = i == t.ln-1? t.w-l: t.g[i+1].position().left-t.cs-mw; //max position according to the contiguous cells
 		var min = i? t.g[i-1].position().left+t.cs+mw: l;				//min position according to the contiguous cells
+
+		///// hidden columns hit here, look for next available visible column
+		if(max<min) {
+			var j=i;
+			while(!t.c[++j].is(':visible')) {
+				if(j>=t.c.length) break;
+			}
+			max = t.g[j].position().left-t.cs-mw;
+		}
 		
 		x = M.max(min, M.min(max, x));						//apply boundings		
 		drag.x = x;	 drag.css("left",  x + PX); 			//apply position increment		
 			
 		if(t.opt.liveDrag){ 								//if liveDrag is enabled
+			// i is the index of the grip being dragged
 			syncCols(t,i); syncGrips(t);					//columns and grips are synchronized
 			var cb = t.opt.onDrag;							//check if there is an onDrag callback
 			if (cb) { e.currentTarget = t[0]; cb(e); }		//if any, it is fired			
@@ -214,7 +293,6 @@
 	 * Event handler fired when the dragging is over, updating table layout
 	 */
 	var onGripDragOver = function(e){	
-		
 		d.unbind('mousemove.'+SIGNATURE).unbind('mouseup.'+SIGNATURE);
 		$("head :last-child").remove(); 				//remove the dragging cursor style	
 		if(!drag) return;
@@ -251,27 +329,39 @@
 	 * table layout according to the browser's size synchronizing related grips 
 	 */
 	var onResize = function(){
-		for(t in tables){		
-			var t = tables[t], i, mw=0;				
-			t.removeClass(SIGNATURE);						//firefox doesnt like layout-fixed in some cases
-			if (t.w != t.width()) {							//if the the table's width has changed
-				t.w = t.width();							//its new value is kept
-				for(i=0; i<t.ln; i++) mw+= t.c[i].w;		//the active cells area is obtained
-				//cell rendering is not as trivial as it might seem, and it is slightly different for
-				//each browser. In the begining i had a big switch for each browser, but since the code
-				//was extremelly ugly now I use a different approach with several reflows. This works 
-				//pretty well but it's a bit slower. For now, lets keep things simple...   
-				for(i=0; i<t.ln; i++) t.c[i].css("width", M.round(1000*t.c[i].w/mw)/10 + "%").l=true; 
-				//c.l locks the column, telling us that its c.w is outdated									
+			for(t in tables){
+				var tt=t, t = tables[t], i, mw=0;				
+				t.removeClass(SIGNATURE);						//firefox doesnt like layout-fixed in some cases
+				
+				if (t.w != t.width()) {							//if the the table's width has changed
+					t.w = t.width();							//its new value is kept
+					for(i=0; i<t.ln; i++) {
+						mw+= t.c[i].w;		//the active cells area is obtained
+					}
+					//cell rendering is not as trivial as it might seem, and it is slightly different for
+					//each browser. In the begining i had a big switch for each browser, but since the code
+					//was extremelly ugly now I use a different approach with several reflows. This works 
+					//pretty well but it's a bit slower. For now, lets keep things simple...   
+					for(i=0; i<t.ln; i++) {
+						t.c[i].css("width", M.round(1000*t.c[i].w/mw)/10 + "%").l=true; 
+					}
+					//c.l locks the column, telling us that its c.w is outdated									
+				}
+				syncGrips(t.addClass(SIGNATURE));
 			}
-			syncGrips(t.addClass(SIGNATURE));
-		}
+		
+		///// resize events happen repeatedly so clear handle then make a new one
+		///// the last one survives to run the callback
+		clearTimeout(window.resizeEvt);
+		window.resizeEvt = setTimeout(function() {
+			t && t.find('col').each(function(i, col) {
+				$(col).css("width", "auto");
+			});
+		}, 300);
 	};		
 
-
 	//bind resize event, to update grips position 
-	$(window).bind('resize.'+SIGNATURE, onResize); 
-
+	$(window).bind('resize.'+SIGNATURE, onResize);
 
 	/**
 	 * The plugin is added to the jQuery library
@@ -297,6 +387,7 @@
 				
 				// extend plugin
 				ignoreClass: '',  // don't resize columns with supplied classname
+				sessionPrefix: 'cols-', // for multiple views of the same tableid each with separate session storage data
 				
 				//events:
 				onDrag: null, 					//callback function to be fired during the column resizing process if liveDrag is enabled
@@ -309,4 +400,3 @@
         }
     });
 })(jQuery);
-
